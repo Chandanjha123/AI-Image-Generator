@@ -1,0 +1,29 @@
+[build]
+  publish = "."
+  functions = "."
+
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/server/:splat"
+  status = 200
+
+[[redirects]]
+  from = "/generate"
+  to = "/.netlify/functions/server/generate"
+  status = 200
+
+[[redirects]]
+  from = "/test-api"
+  to = "/.netlify/functions/server/test-api"
+  status = 200
+
+[[redirects]]
+  from = "/health"
+  to = "/.netlify/functions/server/health"
+  status = 200
+
+# Handle SPA routing - redirect all URLs to index.html
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
