@@ -45,18 +45,18 @@ const generateImages = async (imageCount, aspectRatio, promptText) => {
     const { width, height } = getImageDimensions(aspectRatio);
 
     try {
-        // Send request to backend //netlify function
-       const response = await fetch("/.netlify/functions/server", {
+        // Send request to backend
+        const response = await fetch("http://localhost:5000/generate", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
                 prompt: promptText,
+                model: GEMINI_MODEL, // Always use Gemini model
                 width,
                 height,
                 count: imageCount
             }),
         });
-
 
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || "Failed to generate images");

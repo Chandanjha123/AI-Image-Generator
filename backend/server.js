@@ -1,130 +1,130 @@
-// netlify/functions/server.js (or backend/server.js)
+// backend/server.js
+import express from "express";
+import cors from "cors";
+import dotenv from "dotenv";
 import { GoogleGenAI, Modality } from "@google/genai";
 
-export const handler = async (event) => {
-  // Handle CORS preflight requests
-  if (event.httpMethod === 'OPTIONS') {
-    return {
-      statusCode: 200,
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Headers': 'Content-Type',
-        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS'
-      },
-      body: JSON.stringify({ message: 'CORS preflight successful' })
-    };
-  }
+dotenv.config();
 
-  // Handle POST requests to /generate
-  if (event.httpMethod === 'POST') {
-    try {
-      const { prompt, width = 512, height = 512, count = 1 } = JSON.parse(event.body);
+// Check for API key
+if (!process.env.GEMINI_API_KEY) {
+  console.error("❌ GEMINI_API_KEY is missing! Check your .env file");
+  process.exit(1);
+}
 
-      if (!prompt) {
-        return {
-          statusCode: 400,
-          headers: {
-            'Access-Control-Allow-Origin': '*',
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({ error: "Prompt is required" })
-        };
-      }
+// Initialize Gemini AI client - CORRECT WAY
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+const app = express();
+const PORT = 5000;
 
-      // Check for API key
-      if (!process.env.GEMINI_API_KEY) {
-        return {
-          statusCode: 500,
-          headers: {
-            'Access-Control-Allow-Origin': '*',
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({ error: "Server configuration error" })
-        };
-      }
+app.use(cors());
+app.use(express.json());
 
-      // Initialize Gemini AI client
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-      const images = [];
+// Generate images endpoint - FIXED according to official docs
+app.post("/generate", async (req, res) => {
+  const { prompt, width = 512, height = 512, count = 1 } = req.body;
 
-      for (let i = 0; i < count; i++) {
-        const imagePrompt = `${prompt}. Generate as ${width}x${height} pixel image.`;
+  if (!prompt) return res.status(400).json({ error: "Prompt is required" });
 
-        const response = await ai.models.generateContent({
-          model: "gemini-2.0-flash-preview-image-generation",
-          contents: imagePrompt,
-          config: {
-            responseModalities: [Modality.TEXT, Modality.IMAGE],
-            imageWidth: width,
-            imageHeight: height,
-          },
-        });
+  try {
+    const images = [];
 
-        let imageUrl = null;
+    for (let i = 0; i < count; i++) {
+      // Create the prompt with dimensions as per documentation
+      const imagePrompt = `${prompt}. Generate as ${width}x${height} pixel image.`;
 
-        if (response.candidates && response.candidates[0]) {
-          const candidate = response.candidates[0];
-          
-          if (candidate.content && candidate.content.parts) {
-            for (const part of candidate.content.parts) {
-              if (part.inlineData && part.inlineData.data) {
-                imageUrl = `data:image/png;base64,${part.inlineData.data}`;
-                break;
-              }
+      const response = await ai.models.generateContent({
+        model: "gemini-2.0-flash-preview-image-generation",
+        contents: imagePrompt,
+        config: {
+          responseModalities: [Modality.TEXT, Modality.IMAGE], // BOTH are required!
+          imageWidth: width,
+          imageHeight: height,
+        },
+      });
+
+      // Extract image data from response (as per documentation)
+      let imageUrl = null;
+      let textResponse = "";
+
+      if (response.candidates && response.candidates[0]) {
+        const candidate = response.candidates[0];
+        
+        if (candidate.content && candidate.content.parts) {
+          for (const part of candidate.content.parts) {
+            if (part.text) {
+              textResponse = part.text;
+              console.log("Text response:", textResponse);
+            } else if (part.inlineData && part.inlineData.data) {
+              imageUrl = `data:image/png;base64,${part.inlineData.data}`;
             }
           }
         }
-
-        if (!imageUrl) {
-          return {
-            statusCode: 500,
-            headers: {
-              'Access-Control-Allow-Origin': '*',
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ 
-              error: "Failed to generate image",
-              details: "No image data received"
-            })
-          };
-        }
-
-        images.push(imageUrl);
       }
 
-      return {
-        statusCode: 200,
-        headers: {
-          'Access-Control-Allow-Origin': '*',
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ images })
-      };
-
-    } catch (error) {
-      console.error("Error generating image:", error);
-      
-      return {
-        statusCode: 500,
-        headers: {
-          'Access-Control-Allow-Origin': '*',
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ 
+      if (!imageUrl) {
+        console.error("No image generated. Full response:", JSON.stringify(response, null, 2));
+        return res.status(500).json({ 
           error: "Failed to generate image",
-          message: error.message 
-        })
-      };
-    }
-  }
+          details: textResponse || "No image data received"
+        });
+      }
 
-  // Handle other HTTP methods
-  return {
-    statusCode: 405,
-    headers: {
-      'Access-Control-Allow-Origin': '*',
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({ error: "Method not allowed" })
-  };
-};
+      images.push(imageUrl);
+    }
+
+    res.json({ images });
+
+  } catch (error) {
+    console.error("Error generating image:", error.message);
+    console.error("Full error:", error);
+    res.status(500).json({ 
+      error: "Failed to generate image",
+      message: error.message 
+    });
+  }
+});
+
+// Test endpoint to verify API connection
+app.get("/test-api", async (req, res) => {
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-2.0-flash-preview-image-generation",
+      contents: "Test connection - generate a simple red apple image",
+      config: {
+        responseModalities: [Modality.TEXT, Modality.IMAGE],
+        imageWidth: 256,
+        imageHeight: 256,
+      },
+    });
+    
+    res.json({ 
+      status: "API Connection Successful",
+      response: response.candidates ? "Received response" : "No response"
+    });
+  } catch (error) {
+    res.status(500).json({ 
+      status: "API Connection Failed",
+      error: error.message 
+    });
+  }
+});
+
+// Health check
+app.get("/health", (req, res) => {
+  res.json({ 
+    status: "OK", 
+    message: "Server is running",
+    model: "gemini-2.0-flash-preview-image-generation" 
+  });
+});
+
+app.get("/", (req, res) => {
+  res.send("AI Image Generator Backend is running!");
+});
+
+app.listen(PORT, () => {
+  console.log(`Server running at http://localhost:${PORT}`);
+  console.log(`Health check: http://localhost:${PORT}/health`);
+  console.log(`API test: http://localhost:${PORT}/test-api`);
+});
