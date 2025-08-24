@@ -46,7 +46,7 @@ const generateImages = async (imageCount, aspectRatio, promptText) => {
 
     try {
         // Send request to backend //netlify function
-       const response = await fetch("/.netlify/functions/server/generate", {
+       const response = await fetch("/.netlify/functions/server", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
