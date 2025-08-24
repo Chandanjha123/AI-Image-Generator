@@ -46,7 +46,7 @@ const generateImages = async (imageCount, aspectRatio, promptText) => {
 
     try {
         // Send request to backend
-        const response = await fetch("http://localhost:5000/generate", {
+        const response = await fetch("https://ai-image-generator-f77z.onrender.com/generate", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
